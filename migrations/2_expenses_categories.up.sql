@@ -29,4 +29,3 @@ CREATE INDEX products_category_idx ON products(category_id);
 CREATE INDEX expenses_product_idx ON expenses(product_id);
 CREATE INDEX expenses_user_idx ON expenses(user_id);
 CREATE INDEX categories_user_idx ON categories(user_id);
-
