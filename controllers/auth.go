@@ -100,6 +100,7 @@ func (api *API) RefreshSession(c *gin.Context) {
 			sendError(c, http.StatusUnauthorized, "unauthorized")
 			return
 		}
+		log.Println(err)
 		sendError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -107,6 +108,7 @@ func (api *API) RefreshSession(c *gin.Context) {
 	var authResponse models.AuthResponse
 
 	if err := json.Unmarshal([]byte(refreshPayload), &authResponse); err != nil {
+		log.Println(err)
 		sendError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -117,6 +119,7 @@ func (api *API) RefreshSession(c *gin.Context) {
 			sendError(c, http.StatusUnauthorized, "unauthorized")
 			return
 		}
+		log.Println(err)
 		sendError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
