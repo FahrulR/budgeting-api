@@ -131,7 +131,7 @@ func (api *API) UpsertCategories(c *gin.Context) {
 
 	categories := payload.Data
 	if len(categories) == 0 {
-		sendError(c, http.StatusBadRequest, "missing-Categories")
+		sendError(c, http.StatusBadRequest, "missing-categories")
 		return
 	}
 

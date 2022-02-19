@@ -160,9 +160,9 @@ func (api *API) BatchDeletes(c *gin.Context, table string) {
 	}
 
 	if len(errInvalid) > 0 {
-		c.JSON(http.StatusBadRequest, map[string]interface{}{
-			"message": "error",
-			"detail":  errInvalid,
+		c.JSON(http.StatusBadRequest, models.RowResponseError{
+			Message: "error",
+			Detail:  errInvalid,
 		})
 		return
 	}
