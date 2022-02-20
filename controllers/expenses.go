@@ -333,11 +333,11 @@ func validateExpense(expense *models.Expense) error {
 		return errors.New("date-shall-be-a-past-date")
 	}
 
-	if len(expense.Currency) != 3 {
-		return errors.New("invalid-currency")
-	}
-
+	// currently only allow USD and IDR
 	expense.Currency = strings.ToUpper(expense.Currency)
+	if expense.Currency != "USD" && expense.Currency != "IDR" {
+		return errors.New("only-usd-or-idr-currency-are-allowed")
+	}
 
 	return nil
 }
