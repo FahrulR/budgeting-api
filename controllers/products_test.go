@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"budgetingapi/models"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -321,12 +320,30 @@ func TestDeleteProducts(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Equal(t, "missing-data", genericResp.Message)
 
-	// bad request (400)
-
+	// err check exist (500)
 	mockID := "63eb226a-d612-412b-b8d4-a3e17b7d2226"
 	w = httptest.NewRecorder()
 	c, _ = gin.CreateTestContext(w)
-	payload = parsePayload(models.BatchDeleteRequest{Data: []string{mockID, "error"}})
+	payload = parsePayload(models.BatchDeleteRequest{Data: []string{mockID}})
+
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnError(fmt.Errorf("err-exists"))
+
+	req, _ = http.NewRequest("POST", "", payload)
+	c.Request = req
+	api.DeleteCategories(c)
+
+	err = json.NewDecoder(w.Body).Decode(&genericResp)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, "err-exists", genericResp.Message)
+
+	// bad request (400)
+	w = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(w)
+	payload = parsePayload(models.BatchDeleteRequest{Data: []string{"error", mockID}})
+
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
 	req, _ = http.NewRequest("POST", "", payload)
 	c.Request = req
 	api.DeleteProducts(c)
@@ -336,16 +353,19 @@ func TestDeleteProducts(t *testing.T) {
 	err = json.NewDecoder(w.Body).Decode(&rowResp)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Equal(t, "error", rowResp.Message)
-	assert.Equal(t, 1, len(rowResp.Detail))
-	assert.Equal(t, 1, rowResp.Detail[0].Row)
+	assert.Equal(t, 2, len(rowResp.Detail))
+	assert.Equal(t, 0, rowResp.Detail[0].Row)
 	assert.Equal(t, "invalid-id", rowResp.Detail[0].Message)
+	assert.Equal(t, 1, rowResp.Detail[1].Row)
+	assert.Equal(t, "conflict-id", rowResp.Detail[1].Message)
 
 	// err begin (500)
 	w = httptest.NewRecorder()
 	c, _ = gin.CreateTestContext(w)
 	payload = parsePayload(models.BatchDeleteRequest{Data: []string{mockID, mockID}})
 
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	dbMock.ExpectBegin().WillReturnError(fmt.Errorf("err-begin"))
 
 	req, _ = http.NewRequest("POST", "", payload)
@@ -362,6 +382,8 @@ func TestDeleteProducts(t *testing.T) {
 	c, _ = gin.CreateTestContext(w)
 	payload = parsePayload(models.BatchDeleteRequest{Data: []string{mockID, mockID}})
 
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	dbMock.ExpectBegin()
 	dbMock.ExpectExec("UPDATE products.*").WillReturnError(fmt.Errorf("err-exec"))
 	dbMock.ExpectRollback()
@@ -381,6 +403,8 @@ func TestDeleteProducts(t *testing.T) {
 	c, _ = gin.CreateTestContext(w)
 	payload = parsePayload(reqData)
 
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	dbMock.ExpectBegin()
 	dbMock.ExpectExec("UPDATE products.*").WillReturnResult(sqlmock.NewResult(0, 1))
 	dbMock.ExpectRollback()
@@ -392,13 +416,15 @@ func TestDeleteProducts(t *testing.T) {
 	err = json.NewDecoder(w.Body).Decode(&genericResp)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, http.StatusNotFound, w.Code)
-	assert.Equal(t, fmt.Sprintf("expected-%d-updated-but-got-%d", len(reqData.Data), 1), genericResp.Message)
+	assert.Equal(t, fmt.Sprintf("expected-%d-deleted-but-got-%d", len(reqData.Data), 1), genericResp.Message)
 
 	// err commit (500)
 	w = httptest.NewRecorder()
 	c, _ = gin.CreateTestContext(w)
 	payload = parsePayload(reqData)
 
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	dbMock.ExpectBegin()
 	dbMock.ExpectExec("UPDATE products.*").WillReturnResult(sqlmock.NewResult(0, 2))
 	dbMock.ExpectCommit().WillReturnError(fmt.Errorf("err-commit"))
@@ -418,6 +444,8 @@ func TestDeleteProducts(t *testing.T) {
 	c, _ = gin.CreateTestContext(w)
 	payload = parsePayload(reqData)
 
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	dbMock.ExpectQuery("SELECT EXISTS.*").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
 	dbMock.ExpectBegin()
 	dbMock.ExpectExec("UPDATE products.*").WillReturnResult(sqlmock.NewResult(0, 2))
 	dbMock.ExpectCommit()
@@ -433,9 +461,4 @@ func TestDeleteProducts(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "ok", respOk["message"])
-}
-
-func parsePayload(p interface{}) *bytes.Buffer {
-	data, _ := json.Marshal(p)
-	return bytes.NewBuffer(data)
 }

@@ -45,6 +45,7 @@ func (api *API) GetCategories(c *gin.Context) {
 		"id":          "id",
 		"name":        "name",
 		"description": "description",
+		"user_id":     "user_id",
 		"created_at":  "created_at",
 		"updated_at":  "updated_at",
 	}
@@ -55,8 +56,6 @@ func (api *API) GetCategories(c *gin.Context) {
 		orderBy = "updated_at"
 	}
 
-	var categories []models.Category
-
 	countQ := `SELECT COUNT(1) FROM categories
 		WHERE NOT deleted`
 	selectQ := `SELECT
@@ -66,6 +65,7 @@ func (api *API) GetCategories(c *gin.Context) {
 		WHERE NOT deleted`
 
 	var categoryList models.CategoryList
+	var categories []models.Category
 	var err error
 
 	filterQ, stms := getFilterCategory(userId, name, description)

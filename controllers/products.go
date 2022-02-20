@@ -50,6 +50,7 @@ func (api *API) GetProducts(c *gin.Context) {
 		"id":          "p.id",
 		"name":        "p.name",
 		"description": "p.description",
+		"user_id":     "p.user_id",
 		"created_at":  "p.created_at",
 		"updated_at":  "p.updated_at",
 		"category":    "c.name",
@@ -60,8 +61,6 @@ func (api *API) GetProducts(c *gin.Context) {
 	} else {
 		orderBy = "p.updated_at"
 	}
-
-	var products []models.Product
 
 	countQ := `SELECT COUNT(1) FROM products p
 		JOIN categories c
@@ -76,6 +75,7 @@ func (api *API) GetProducts(c *gin.Context) {
 		WHERE NOT p.deleted`
 
 	var productList models.ProductList
+	var products []models.Product
 	var err error
 
 	filterQ, stms := getFilterProduct(userId, name, description, categoryId)
@@ -207,7 +207,7 @@ func handleExcelProducts(c *gin.Context, products []models.Product) {
 	// delete default sheet
 	f.DeleteSheet("Sheet1")
 
-	err := f.SetColWidth(sheet, "A", "D", 50)
+	err := f.SetColWidth(sheet, "A", "E", 50)
 	if err != nil {
 		sendError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -232,6 +232,7 @@ func handleExcelProducts(c *gin.Context, products []models.Product) {
 	}
 
 	if err = streamWriter.SetRow("A1", []interface{}{
+		excelize.Cell{StyleID: headerStyle, Value: "Category"},
 		excelize.Cell{StyleID: headerStyle, Value: "Name"},
 		excelize.Cell{StyleID: headerStyle, Value: "Description"},
 		excelize.Cell{StyleID: headerStyle, Value: "Created At"},
@@ -250,11 +251,12 @@ func handleExcelProducts(c *gin.Context, products []models.Product) {
 			updatedAt = "-"
 		}
 
-		row := make([]interface{}, 4)
-		row[0] = excelize.Cell{StyleID: dataStyle, Value: product.Name}
-		row[1] = excelize.Cell{StyleID: dataStyle, Value: product.Description}
-		row[2] = excelize.Cell{StyleID: dataStyle, Value: createdAt}
-		row[3] = excelize.Cell{StyleID: dataStyle, Value: updatedAt}
+		row := make([]interface{}, 5)
+		row[0] = excelize.Cell{StyleID: dataStyle, Value: product.CategoryName}
+		row[1] = excelize.Cell{StyleID: dataStyle, Value: product.Name}
+		row[2] = excelize.Cell{StyleID: dataStyle, Value: product.Description}
+		row[3] = excelize.Cell{StyleID: dataStyle, Value: createdAt}
+		row[4] = excelize.Cell{StyleID: dataStyle, Value: updatedAt}
 
 		cell, _ := excelize.CoordinatesToCellName(1, n+2)
 		if err = streamWriter.SetRow(cell, row); err != nil {
