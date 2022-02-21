@@ -96,19 +96,23 @@ func (api *API) GetExpensesReport(c *gin.Context) {
 }
 
 func (api *API) getTotalIdrUsd(currency, q string, stms []interface{}) (totalIdr, totalUsd float64, err error) {
+	var sqlIdr, sqlUsd sql.NullFloat64
+
 	if currency == "IDR" {
-		err = api.Db.QueryRow(q, stms...).Scan(&totalIdr)
+		err = api.Db.QueryRow(q, stms...).Scan(&sqlIdr)
 		if err != nil {
 			log.Println(err)
 		}
+		totalIdr = sqlIdr.Float64
 		return
 	}
 
 	if currency == "USD" {
-		err = api.Db.QueryRow(q, stms...).Scan(&totalUsd)
+		err = api.Db.QueryRow(q, stms...).Scan(&sqlUsd)
 		if err != nil {
 			log.Println(err)
 		}
+		totalUsd = sqlUsd.Float64
 		return
 	}
 
@@ -116,17 +120,21 @@ func (api *API) getTotalIdrUsd(currency, q string, stms []interface{}) (totalIdr
 	q += fmt.Sprintf(" AND e.currency = $%d", len(stms)+1)
 	stms = append(stms, "IDR")
 
-	err = api.Db.QueryRow(q, stms...).Scan(&totalIdr)
+	err = api.Db.QueryRow(q, stms...).Scan(&sqlIdr)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
 	stms[len(stms)-1] = "USD"
-	err = api.Db.QueryRow(q, stms...).Scan(&totalUsd)
+	err = api.Db.QueryRow(q, stms...).Scan(&sqlUsd)
 	if err != nil {
 		log.Println(err)
+		return
 	}
+
+	totalIdr = sqlIdr.Float64
+	totalUsd = sqlUsd.Float64
 
 	return
 }
