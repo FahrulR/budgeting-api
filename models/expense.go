@@ -33,6 +33,19 @@ type Expense struct {
 	Amount              float64   `json:"amount"`
 }
 
+type ExpenseReport struct {
+	ReportsIdr []CategoryTotalReport `json:"reports_idr"`
+	ReportsUsd []CategoryTotalReport `json:"reports_usd"`
+	TotalIdr   float64               `json:"total_idr"`
+	TotalUsd   float64               `json:"total_usd"`
+}
+
+type CategoryTotalReport struct {
+	Id    string  `json:"id"`
+	Name  string  `json:"name"`
+	Total float64 `json:"total"`
+}
+
 type UpsertExpenseRequest struct {
 	Data []Expense `json:"data"`
 }

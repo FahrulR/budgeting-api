@@ -17,6 +17,120 @@ import (
 	"github.com/gofrs/uuid"
 )
 
+func (api *API) GetExpensesReport(c *gin.Context) {
+	u := ParsePayload(c)
+	filter := models.ExpenseFilter{
+		Expense: models.Expense{
+			UserId:     c.Query("user_id"),
+			CategoryId: c.Query("category_id"),
+			Currency:   c.Query("currency"),
+		},
+		MinDate: c.Query("min_date"),
+		MaxDate: c.Query("max_date"),
+	}
+
+	if u.Role == string(models.Customer) {
+		filter.UserId = u.Id
+	}
+
+	totalQ := `SELECT SUM(amount) FROM expenses e
+		JOIN products p ON e.product_id = p.id AND NOT p.deleted
+		JOIN categories c ON p.category_id = c.id
+		WHERE NOT e.deleted`
+
+	selectQ := `SELECT e.currency, c.id, c.name, SUM(amount)
+		FROM expenses e
+		JOIN products p ON e.product_id = p.id AND NOT p.deleted
+		JOIN categories c ON p.category_id = c.id
+		WHERE NOT e.deleted`
+
+	filterQ, stms := getFilterExpense(filter)
+
+	selectQ = selectQ + filterQ
+	totalQ = totalQ + filterQ
+
+	var report models.ExpenseReport
+	var err error
+
+	report.TotalIdr, report.TotalUsd, err = api.getTotalIdrUsd(filter.Currency, totalQ, stms)
+	if err != nil {
+		log.Println(err)
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	qGroupBy := " GROUP BY e.currency, c.id, c.name"
+	selectQ += qGroupBy
+
+	log.Println(selectQ)
+
+	rows, err := api.Db.Query(selectQ, stms...)
+	if err != nil {
+		log.Println(err)
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var categoryReport models.CategoryTotalReport
+		var currency string
+
+		if err := rows.Scan(&currency, &categoryReport.Id, &categoryReport.Name, &categoryReport.Total); err != nil {
+			log.Println(err)
+			sendError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		if currency == "IDR" {
+			report.ReportsIdr = append(report.ReportsIdr, categoryReport)
+		}
+
+		if currency == "USD" {
+			report.ReportsUsd = append(report.ReportsUsd, categoryReport)
+		}
+	}
+
+	c.JSON(http.StatusOK, report)
+}
+
+func (api *API) getTotalIdrUsd(currency, q string, stms []interface{}) (totalIdr, totalUsd float64, err error) {
+	if currency == "IDR" {
+		err = api.Db.QueryRow(q, stms...).Scan(&totalIdr)
+		if err != nil {
+			log.Println(err)
+		}
+		return
+	}
+
+	if currency == "USD" {
+		err = api.Db.QueryRow(q, stms...).Scan(&totalUsd)
+		if err != nil {
+			log.Println(err)
+		}
+		return
+	}
+
+	// get both
+	q += fmt.Sprintf(" AND e.currency = $%d", len(stms)+1)
+	stms = append(stms, "IDR")
+
+	err = api.Db.QueryRow(q, stms...).Scan(&totalIdr)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	stms[len(stms)-1] = "USD"
+	err = api.Db.QueryRow(q, stms...).Scan(&totalUsd)
+	if err != nil {
+		log.Println(err)
+	}
+
+	return
+}
+
 func (api *API) GetExpenses(c *gin.Context) {
 	u := ParsePayload(c)
 	page, _ := strconv.Atoi(c.Query("page"))
@@ -270,7 +384,7 @@ func getFilterExpense(filter models.ExpenseFilter) (filterQ string, stms []inter
 		stms = append(stms, "%"+filter.ProductName+"%")
 	}
 
-	if filter.Currency != "" {
+	if filter.Currency == "IDR" || filter.Currency == "USD" {
 		filterQ += fmt.Sprintf(" AND e.currency = $%d", len(stms)+1)
 		stms = append(stms, filter.Currency)
 	}
