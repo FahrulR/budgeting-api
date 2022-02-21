@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/360EntSecGroup-Skylar/excelize/v2"
+	"github.com/dustin/go-humanize"
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
 )
@@ -25,6 +27,8 @@ func (api *API) GetExpenses(c *gin.Context) {
 	amount, _ := strconv.ParseFloat(c.Query("amount"), 64)
 	minAmount, _ := strconv.ParseFloat(c.Query("min_amount"), 64)
 	maxAmount, _ := strconv.ParseFloat(c.Query("max_amount"), 64)
+
+	asExcel, _ := strconv.ParseBool(c.Query("export_as_excel"))
 
 	filter := models.ExpenseFilter{
 		Expense: models.Expense{
@@ -82,9 +86,9 @@ func (api *API) GetExpenses(c *gin.Context) {
 		JOIN categories c ON p.category_id = c.id
 		WHERE NOT e.deleted`
 	selectQ := `SELECT
-			e.id, p.category_id, c.name, p.id,
-			p.name, p.description, e.date, e.currency,
-			e.amount, e.user_id, e.created_at, e.updated_at
+			e.id, p.category_id, c.name, c.description, p.id,
+			p.name, p.description, e.date, e.currency, e.amount,
+			e.user_id, e.created_at, e.updated_at
 		FROM expenses e
 		JOIN products p ON e.product_id = p.id AND NOT p.deleted
 		JOIN categories c ON p.category_id = c.id
@@ -117,16 +121,16 @@ func (api *API) GetExpenses(c *gin.Context) {
 	for rows.Next() {
 		var expense models.Expense
 
-		var categoryId, categoryName, productId, productName,
-			productDescription, currency, userId sql.NullString
+		var categoryId, categoryName, categoryDescription, productId,
+			productName, productDescription, currency, userId sql.NullString
 
 		var amount sql.NullFloat64
 
 		var date sql.NullTime
 
-		err = rows.Scan(&expense.Id, &categoryId, &categoryName, &productId,
-			&productName, &productDescription, &date, &currency,
-			&amount, &userId, &expense.CreatedAt, &expense.UpdatedAt)
+		err = rows.Scan(&expense.Id, &categoryId, &categoryName, &categoryDescription, &productId,
+			&productName, &productDescription, &date, &currency, &amount,
+			&userId, &expense.CreatedAt, &expense.UpdatedAt)
 		if err != nil {
 			log.Println(err)
 			sendError(c, http.StatusInternalServerError, err.Error())
@@ -135,6 +139,7 @@ func (api *API) GetExpenses(c *gin.Context) {
 
 		expense.CategoryId = categoryId.String
 		expense.CategoryName = categoryName.String
+		expense.CategoryDescription = categoryDescription.String
 		expense.ProductId = productId.String
 		expense.ProductName = productName.String
 		expense.ProductDescription = productDescription.String
@@ -147,6 +152,11 @@ func (api *API) GetExpenses(c *gin.Context) {
 		}
 
 		expenses = append(expenses, expense)
+	}
+
+	if asExcel {
+		handleExcelExpenses(c, expenses)
+		return
 	}
 
 	expenseList.Total, err = api.GetTotal(countQ, stms)
@@ -344,4 +354,91 @@ func validateExpense(expense *models.Expense) error {
 
 func (api *API) DeleteExpenses(c *gin.Context) {
 	api.BatchDeletes(c, "expenses")
+}
+
+func handleExcelExpenses(c *gin.Context, expenses []models.Expense) {
+	if len(expenses) == 0 {
+		sendError(c, http.StatusNotFound, "expenses-not-found")
+		return
+	}
+
+	f := excelize.NewFile()
+
+	sheet := "List Expenses"
+	f.NewSheet(sheet)
+	// delete default sheet
+	f.DeleteSheet("Sheet1")
+
+	err := f.SetColWidth(sheet, "A", "F", 50)
+	if err != nil {
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	headerStyle, err := f.NewStyle(s1)
+	if err != nil {
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	dataStyle, err := f.NewStyle(s2)
+	if err != nil {
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	streamWriter, err := f.NewStreamWriter(sheet)
+	if err != nil {
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if err = streamWriter.SetRow("A1", []interface{}{
+		excelize.Cell{StyleID: headerStyle, Value: "Category"},
+		excelize.Cell{StyleID: headerStyle, Value: "Product Name"},
+		excelize.Cell{StyleID: headerStyle, Value: "Product Description"},
+		excelize.Cell{StyleID: headerStyle, Value: "Currency"},
+		excelize.Cell{StyleID: headerStyle, Value: "Amount"},
+		excelize.Cell{StyleID: headerStyle, Value: "Date"}}); err != nil {
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	for n, expense := range expenses {
+		amountFormatted := fmt.Sprintf("$%s", humanize.Commaf(expense.Amount))
+		if expense.Currency == "IDR" {
+			amountFormatted = strings.ReplaceAll(fmt.Sprintf("Rp %s", humanize.Commaf(expense.Amount)), ",", ".")
+		}
+
+		row := make([]interface{}, 6)
+		row[0] = excelize.Cell{StyleID: dataStyle, Value: expense.CategoryName}
+		row[1] = excelize.Cell{StyleID: dataStyle, Value: expense.ProductName}
+		row[2] = excelize.Cell{StyleID: dataStyle, Value: expense.ProductDescription}
+		row[3] = excelize.Cell{StyleID: dataStyle, Value: expense.Currency}
+		row[4] = excelize.Cell{StyleID: dataStyle, Value: amountFormatted}
+		row[5] = excelize.Cell{StyleID: dataStyle, Value: expense.Date}
+
+		cell, _ := excelize.CoordinatesToCellName(1, n+2)
+		if err = streamWriter.SetRow(cell, row); err != nil {
+			sendError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	if err := streamWriter.Flush(); err != nil {
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	loc, _ := time.LoadLocation("Asia/Jakarta")
+	fileName := fmt.Sprintf("report_expenses_%s.xlsx", time.Now().In(loc).Format("20060102_150405"))
+
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", "attachment;filename=\""+fileName+"\"")
+
+	if _, err := f.WriteTo(c.Writer); err != nil {
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 }
