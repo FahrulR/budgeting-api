@@ -15,7 +15,8 @@ import (
 )
 
 var (
-	s1 = `
+	dateFormat = "2006-01-02"
+	s1         = `
 	{
 		"border": [
 			{
@@ -130,7 +131,8 @@ func (api *API) BatchDeletes(c *gin.Context, table string) {
 		return
 	}
 
-	needCheckProducts := table == "categories"
+	needCheckCategories := table == "categories"
+	needCheckProducts := table == "products"
 
 	var errInvalid []models.RowError
 
@@ -143,9 +145,24 @@ func (api *API) BatchDeletes(c *gin.Context, table string) {
 			continue
 		}
 
-		if needCheckProducts {
+		if needCheckCategories {
 			var exists bool
 			if err := api.Db.QueryRow("SELECT EXISTS(SELECT 1 FROM products WHERE category_id = $1 AND NOT deleted)", id).Scan(&exists); err != nil {
+				sendError(c, http.StatusInternalServerError, err.Error())
+				return
+			}
+
+			if exists {
+				errInvalid = append(errInvalid, models.RowError{
+					Row:     i,
+					Message: "conflict-id",
+				})
+			}
+		}
+
+		if needCheckProducts {
+			var exists bool
+			if err := api.Db.QueryRow("SELECT EXISTS(SELECT 1 FROM expenses WHERE product_id = $1 AND NOT deleted)", id).Scan(&exists); err != nil {
 				sendError(c, http.StatusInternalServerError, err.Error())
 				return
 			}
@@ -192,7 +209,7 @@ func (api *API) BatchDeletes(c *gin.Context, table string) {
 
 	t, _ := tag.RowsAffected()
 	if int(t) != len(ids) {
-		sendError(c, http.StatusNotFound, fmt.Sprintf("expected-%d-updated-but-got-%d", len(ids), t))
+		sendError(c, http.StatusNotFound, fmt.Sprintf("expected-%d-deleted-but-got-%d", len(ids), t))
 		return
 	}
 

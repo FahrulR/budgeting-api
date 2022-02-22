@@ -378,7 +378,7 @@ func TestDeleteCategories(t *testing.T) {
 	err = json.NewDecoder(w.Body).Decode(&genericResp)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, http.StatusNotFound, w.Code)
-	assert.Equal(t, fmt.Sprintf("expected-%d-updated-but-got-%d", len(reqData.Data), 1), genericResp.Message)
+	assert.Equal(t, fmt.Sprintf("expected-%d-deleted-but-got-%d", len(reqData.Data), 1), genericResp.Message)
 
 	// err commit (500)
 	w = httptest.NewRecorder()

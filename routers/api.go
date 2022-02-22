@@ -1,7 +1,6 @@
 package routers
 
 import (
-	"bytes"
 	"database/sql"
 	"log"
 	"os"
@@ -14,16 +13,6 @@ import (
 	"github.com/go-redis/redis/v8"
 	_ "github.com/lib/pq"
 )
-
-type responseBodyWriter struct {
-	gin.ResponseWriter
-	body *bytes.Buffer
-}
-
-func (r responseBodyWriter) Write(b []byte) (int, error) {
-	r.body.Write(b)
-	return r.ResponseWriter.Write(b)
-}
 
 func Route() *gin.Engine {
 	router := gin.Default()
@@ -61,6 +50,16 @@ func Route() *gin.Engine {
 		// batch upsert/delete
 		categories.POST("", api.UpsertCategories)
 		categories.DELETE("", api.DeleteCategories)
+	}
+
+	expenses := router.Group("/api/expenses")
+	expenses.Use(middlewares.Auth(api.Redis))
+	{
+		expenses.GET("", api.GetExpenses)
+		expenses.GET("/report", api.GetExpensesReport)
+		// batch upsert/delete
+		expenses.POST("", api.UpsertExpenses)
+		expenses.DELETE("", api.DeleteExpenses)
 	}
 	return router
 }

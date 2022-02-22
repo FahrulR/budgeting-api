@@ -1,0 +1,5 @@
+ALTER TABLE expenses DROP COLUMN cash;
+
+ALTER TABLE expenses
+ADD currency VARCHAR(3) NOT NULL,
+ADD amount DECIMAL(12,2) NOT NULL;
