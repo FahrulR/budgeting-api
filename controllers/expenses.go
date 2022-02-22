@@ -74,14 +74,17 @@ func (api *API) GetExpensesReport(c *gin.Context) {
 	defer rows.Close()
 
 	for rows.Next() {
+		var total sql.NullFloat64
 		var categoryReport models.CategoryTotalReport
 		var currency string
 
-		if err := rows.Scan(&currency, &categoryReport.Id, &categoryReport.Name, &categoryReport.Total); err != nil {
+		if err := rows.Scan(&currency, &categoryReport.Id, &categoryReport.Name, &total); err != nil {
 			log.Println(err)
 			sendError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
+
+		categoryReport.Total = total.Float64
 
 		if currency == "IDR" {
 			report.ReportsIdr = append(report.ReportsIdr, categoryReport)
@@ -336,7 +339,6 @@ func (api *API) UpsertExpenses(c *gin.Context) {
 		}
 
 		if err := validateExpense(&expense); err != nil {
-			log.Println(expense.Currency)
 			errExpenses = append(errExpenses, models.RowError{Row: i + 1, Message: err.Error()})
 			continue
 		}
