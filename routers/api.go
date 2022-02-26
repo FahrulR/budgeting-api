@@ -61,6 +61,16 @@ func Route() *gin.Engine {
 		expenses.POST("", api.UpsertExpenses)
 		expenses.DELETE("", api.DeleteExpenses)
 	}
+
+	incomes := router.Group("/api/incomes")
+	incomes.Use(middlewares.Auth(api.Redis))
+	{
+		incomes.GET("", api.GetIncomes)
+		incomes.GET("/report", api.GetIncomesReport)
+		// batch upsert/delete
+		incomes.POST("", api.UpsertIncomes)
+		incomes.DELETE("", api.DeleteIncomes)
+	}
 	return router
 }
 
