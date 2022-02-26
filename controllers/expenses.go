@@ -98,50 +98,6 @@ func (api *API) GetExpensesReport(c *gin.Context) {
 	c.JSON(http.StatusOK, report)
 }
 
-func (api *API) getTotalIdrUsd(currency, q string, stms []interface{}) (totalIdr, totalUsd float64, err error) {
-	var sqlIdr, sqlUsd sql.NullFloat64
-
-	if currency == "IDR" {
-		err = api.Db.QueryRow(q, stms...).Scan(&sqlIdr)
-		if err != nil {
-			log.Println(err)
-		}
-		totalIdr = sqlIdr.Float64
-		return
-	}
-
-	if currency == "USD" {
-		err = api.Db.QueryRow(q, stms...).Scan(&sqlUsd)
-		if err != nil {
-			log.Println(err)
-		}
-		totalUsd = sqlUsd.Float64
-		return
-	}
-
-	// get both
-	q += fmt.Sprintf(" AND e.currency = $%d", len(stms)+1)
-	stms = append(stms, "IDR")
-
-	err = api.Db.QueryRow(q, stms...).Scan(&sqlIdr)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	stms[len(stms)-1] = "USD"
-	err = api.Db.QueryRow(q, stms...).Scan(&sqlUsd)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	totalIdr = sqlIdr.Float64
-	totalUsd = sqlUsd.Float64
-
-	return
-}
-
 func (api *API) GetExpenses(c *gin.Context) {
 	u := ParsePayload(c)
 	page, _ := strconv.Atoi(c.Query("page"))
@@ -565,4 +521,48 @@ func handleExcelExpenses(c *gin.Context, expenses []models.Expense) {
 		return
 	}
 
+}
+
+func (api *API) getTotalIdrUsd(currency, q string, stms []interface{}) (totalIdr, totalUsd float64, err error) {
+	var sqlIdr, sqlUsd sql.NullFloat64
+
+	if currency == "IDR" {
+		err = api.Db.QueryRow(q, stms...).Scan(&sqlIdr)
+		if err != nil {
+			log.Println(err)
+		}
+		totalIdr = sqlIdr.Float64
+		return
+	}
+
+	if currency == "USD" {
+		err = api.Db.QueryRow(q, stms...).Scan(&sqlUsd)
+		if err != nil {
+			log.Println(err)
+		}
+		totalUsd = sqlUsd.Float64
+		return
+	}
+
+	// get both
+	q += fmt.Sprintf(" AND e.currency = $%d", len(stms)+1)
+	stms = append(stms, "IDR")
+
+	err = api.Db.QueryRow(q, stms...).Scan(&sqlIdr)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	stms[len(stms)-1] = "USD"
+	err = api.Db.QueryRow(q, stms...).Scan(&sqlUsd)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	totalIdr = sqlIdr.Float64
+	totalUsd = sqlUsd.Float64
+
+	return
 }
