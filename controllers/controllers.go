@@ -2,16 +2,24 @@ package controllers
 
 import (
 	"budgetingapi/models"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/gofrs/uuid"
 	"github.com/lib/pq"
+	"gopkg.in/gomail.v2"
 )
 
 var (
@@ -99,6 +107,12 @@ type API struct {
 	Db    *sql.DB
 	Redis *redis.Client
 }
+
+var (
+	dialAndSend = func(dialer *gomail.Dialer, m ...*gomail.Message) error {
+		return dialer.DialAndSend(m...)
+	}
+)
 
 func NewAPI() *API {
 	return &API{}
@@ -222,6 +236,75 @@ func (api *API) BatchDeletes(c *gin.Context, table string) {
 	c.JSON(http.StatusOK, genericOK)
 }
 
+func (api *API) UpdatePassword(id, password string) (email string, err error) {
+	err = api.Db.QueryRow(`UPDATE users SET password = crypt($1, gen_salt('bf', 8)) WHERE id = $2 AND NOT deleted RETURNING email`, password, id).Scan(&email)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			err = errors.New("not-found")
+		}
+		log.Println(err)
+	}
+
+	return
+}
+
+func sendEmailReset(email, token string) error {
+	subject := os.Getenv("EMAIL_RESET_SUBJECT")
+	emailSMTPPort := os.Getenv("EMAIL_SMTP_PORT")
+	emailSMTPServer := os.Getenv("EMAIL_SMTP_SERVER")
+	emailSMTPUsername := os.Getenv("EMAIL_SMTP_USERNAME")
+	emailSMTPPassword := os.Getenv("EMAIL_SMTP_PASSWORD")
+	emailFrom := os.Getenv("EMAIL_MESSAGE_FROM")
+
+	template := "./templates/reset_password.html"
+
+	if flag.Lookup("test.v") != nil {
+		template = "../templates/reset_password.html"
+	}
+
+	f, err := os.Open(template)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	body, err := ioutil.ReadAll(f)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	url := os.Getenv("WEB_URL") + "/forgot-password?token=" + token
+
+	content := strings.ReplaceAll(string(body), "%URL%", url)
+	mailer := gomail.NewMessage()
+	mailer.SetHeader("From", emailFrom)
+	mailer.SetHeader("To", email)
+	mailer.SetHeader("Subject", subject)
+	mailer.SetBody("text/html", content)
+
+	smtpPort, err := strconv.Atoi(emailSMTPPort)
+	if err != nil {
+		log.Println(err)
+		return err
+	}
+
+	dialer := gomail.NewDialer(
+		emailSMTPServer,
+		smtpPort,
+		emailSMTPUsername,
+		emailSMTPPassword,
+	)
+
+	err = dialAndSend(dialer, mailer)
+	if err != nil {
+		log.Println(err)
+	}
+
+	return err
+}
+
 func ParsePayload(c *gin.Context) (redis models.RedisPayload) {
 	payload := c.Request.Header.Get("payload")
 
@@ -231,4 +314,10 @@ func ParsePayload(c *gin.Context) (redis models.RedisPayload) {
 	}
 
 	return
+}
+
+func tokenGenerator() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return fmt.Sprintf("%x", b)
 }
