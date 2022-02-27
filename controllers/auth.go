@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -264,7 +265,7 @@ func (api *API) UpdateUserReset(c *gin.Context) {
 	}
 
 	if len(passwordResetRequest.Password) < 8 {
-		sendError(c, http.StatusBadRequest, "password-at-least-8-characters")
+		sendError(c, http.StatusBadRequest, "password-must-be-at-least-8-characters")
 		return
 	}
 
@@ -302,6 +303,7 @@ func (api *API) UpdateUserReset(c *gin.Context) {
 func (api *API) CheckResetToken(c *gin.Context) (userId string, err error) {
 	token := c.Param("token")
 	if token == "" {
+		err = errors.New("missing-token")
 		sendError(c, http.StatusBadRequest, "missing-token")
 		return
 	}

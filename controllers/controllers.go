@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -13,7 +14,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
@@ -107,6 +107,12 @@ type API struct {
 	Db    *sql.DB
 	Redis *redis.Client
 }
+
+var (
+	dialAndSend = func(dialer *gomail.Dialer, m ...*gomail.Message) error {
+		return dialer.DialAndSend(m...)
+	}
+)
 
 func NewAPI() *API {
 	return &API{}
@@ -251,7 +257,13 @@ func sendEmailReset(email, token string) error {
 	emailSMTPPassword := os.Getenv("EMAIL_SMTP_PASSWORD")
 	emailFrom := os.Getenv("EMAIL_MESSAGE_FROM")
 
-	f, err := os.Open("./templates/reset_password.html")
+	template := "./templates/reset_password.html"
+
+	if flag.Lookup("test.v") != nil {
+		template = "../templates/reset_password.html"
+	}
+
+	f, err := os.Open(template)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -266,9 +278,6 @@ func sendEmailReset(email, token string) error {
 	url := os.Getenv("WEB_URL") + "/forgot-password?token=" + token
 
 	content := strings.ReplaceAll(string(body), "%URL%", url)
-
-	log.Println(content)
-
 	mailer := gomail.NewMessage()
 	mailer.SetHeader("From", emailFrom)
 	mailer.SetHeader("To", email)
@@ -288,13 +297,10 @@ func sendEmailReset(email, token string) error {
 		emailSMTPPassword,
 	)
 
-	t := time.Now()
-	err = dialer.DialAndSend(mailer)
+	err = dialAndSend(dialer, mailer)
 	if err != nil {
 		log.Println(err)
 	}
-
-	log.Println(time.Since(t))
 
 	return err
 }
