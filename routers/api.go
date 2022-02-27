@@ -36,6 +36,9 @@ func Route() *gin.Engine {
 	router.POST("/api/forgot-password", api.ForgotPassword)
 	router.GET("/api/verify-token/:token", api.VerifyTokenReset)
 	router.POST("/api/reset-password/:token", api.UpdateUserReset)
+	router.POST("/api/register", api.Register)
+	router.GET("/api/profile", middlewares.Auth(api.Redis), api.GetUser)
+	router.POST("/api/profile", middlewares.Auth(api.Redis), api.UpdateUser)
 
 	product := router.Group("/api/products")
 	product.Use(middlewares.Auth(api.Redis))

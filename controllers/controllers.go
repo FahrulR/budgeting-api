@@ -275,7 +275,7 @@ func sendEmailReset(email, token string) error {
 		return err
 	}
 
-	url := os.Getenv("WEB_URL") + "/forgot-password?token=" + token
+	url := os.Getenv("WEB_URL") + "/reset-password?token=" + token
 
 	content := strings.ReplaceAll(string(body), "%URL%", url)
 	mailer := gomail.NewMessage()
