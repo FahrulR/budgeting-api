@@ -1,6 +1,8 @@
 package models
 
-import "time"
+import (
+	"time"
+)
 
 type AuthRequest struct {
 	Email    string `json:"email"`
@@ -24,6 +26,11 @@ type User struct {
 	Name      string    `json:"name"`
 	Email     string    `json:"email"`
 	Role      string    `json:"role"`
+}
+
+type PasswordReset struct {
+	Password             string `json:"password"`
+	PasswordConfirmation string `json:"password_confirmation"`
 }
 
 type Role string

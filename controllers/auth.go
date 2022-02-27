@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
@@ -84,6 +85,7 @@ func (api *API) CheckSession(c *gin.Context) {
 			sendError(c, http.StatusUnauthorized, "unauthorized")
 			return
 		}
+		log.Println(err)
 		sendError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -161,6 +163,164 @@ func (api *API) Logout(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, genericOK)
+}
+
+func (api *API) ForgotPassword(c *gin.Context) {
+	var authRequest models.AuthRequest
+	if err := c.ShouldBindJSON(&authRequest); err != nil {
+		log.Println(err)
+		sendError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if authRequest.Email == "" {
+		sendError(c, http.StatusBadRequest, "missing-email")
+		return
+	}
+
+	if _, err := mail.ParseAddress(authRequest.Email); err != nil {
+		log.Println(err)
+		sendError(c, http.StatusBadRequest, "invalid-email")
+		return
+	}
+
+	var id string
+	if err := api.Db.QueryRow("SELECT id FROM users WHERE email = $1 AND NOT deleted", authRequest.Email).Scan(&id); err != nil {
+		// prevent user enumeration
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusOK, genericOK)
+			return
+		}
+
+		log.Println(err)
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	token := tokenGenerator()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	sessPayload, _ := api.Redis.Get(context.Background(), "reset:"+authRequest.Email).Result()
+	if sessPayload != "" {
+		log.Println("removing old link password..")
+		api.Redis.Del(ctx, sessPayload)
+	}
+
+	err := api.Redis.Set(ctx, "reset:"+authRequest.Email, token, 30*time.Minute).Err()
+	if err != nil {
+		log.Println(err)
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	err = api.Redis.Set(ctx, token, id, 30*time.Minute).Err()
+	if err != nil {
+		log.Println(err)
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if err := sendEmailReset(authRequest.Email, token); err != nil {
+		log.Println(err)
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, genericOK)
+}
+
+func (api *API) VerifyTokenReset(c *gin.Context) {
+	userId, err := api.CheckResetToken(c)
+
+	// response already handled from the function
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	c.JSON(http.StatusOK, map[string]string{"id": userId})
+}
+
+func (api *API) UpdateUserReset(c *gin.Context) {
+	userId, err := api.CheckResetToken(c)
+
+	// response already handled from the function
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	var passwordResetRequest models.PasswordReset
+	if err := c.ShouldBindJSON(&passwordResetRequest); err != nil {
+		log.Println(err)
+		sendError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if passwordResetRequest.Password == "" || passwordResetRequest.PasswordConfirmation == "" {
+		sendError(c, http.StatusBadRequest, "missing-password-or-password-confirmation")
+		return
+	}
+
+	if len(passwordResetRequest.Password) < 8 {
+		sendError(c, http.StatusBadRequest, "password-at-least-8-characters")
+		return
+	}
+
+	if passwordResetRequest.PasswordConfirmation != passwordResetRequest.Password {
+		sendError(c, http.StatusBadRequest, "password-confirmation-does-not-match")
+		return
+	}
+
+	email, err := api.UpdatePassword(userId, passwordResetRequest.Password)
+	if err != nil {
+		log.Println(err)
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	token := c.Param("token")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = api.Redis.Del(ctx, "reset:"+email).Err()
+	if err != nil {
+		// password already changed, just print the err
+		log.Println(err)
+	}
+
+	err = api.Redis.Del(ctx, token).Err()
+	if err != nil {
+		// password already changed, just print the err
+		log.Println(err)
+	}
+
+	c.JSON(http.StatusOK, genericOK)
+}
+
+func (api *API) CheckResetToken(c *gin.Context) (userId string, err error) {
+	token := c.Param("token")
+	if token == "" {
+		sendError(c, http.StatusBadRequest, "missing-token")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	userId, err = api.Redis.Get(ctx, token).Result()
+	if err != nil {
+		if err == redis.Nil {
+			sendError(c, http.StatusNotFound, "token-invalid-or-expired")
+			return
+		}
+
+		log.Println(err)
+		sendError(c, http.StatusInternalServerError, err.Error())
+	}
+
+	return
 }
 
 func (api *API) GenerateToken(resp models.AuthResponse) (string, error) {
