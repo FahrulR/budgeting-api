@@ -23,10 +23,12 @@ func Route() *gin.Engine {
 	api.Db.SetConnMaxLifetime(5 * time.Minute)
 	redisHost := os.Getenv("REDIS_HOST")
 	redisPort := os.Getenv("REDIS_PORT")
+	redisPassword := os.Getenv("REDIS_PASS")
 
 	api.Redis = redis.NewClient(&redis.Options{
-		Addr: redisHost + ":" + redisPort,
-		DB:   0,
+		Addr:     redisHost + ":" + redisPort,
+		DB:       0,
+		Password: redisPassword,
 	})
 
 	router.POST("/api/login", api.Authenticate)
