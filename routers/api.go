@@ -34,7 +34,7 @@ func Route() *gin.Engine {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	err := api.Redis.Ping(ctx)
+	err := api.Redis.Ping(ctx).Err()
 	if err != nil {
 		log.Fatal(err)
 	}
