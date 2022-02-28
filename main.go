@@ -13,6 +13,7 @@ import (
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.LUTC | log.Lshortfile)
+	log.Println(os.Environ())
 	router := routers.Route()
 	port := os.Getenv("PORT")
 	if port == "" {

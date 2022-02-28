@@ -1,6 +1,7 @@
 package routers
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"os"
@@ -30,6 +31,13 @@ func Route() *gin.Engine {
 		DB:       0,
 		Password: redisPassword,
 	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	err := api.Redis.Ping(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	router.POST("/api/login", api.Authenticate)
 	router.GET("/api/check-session", middlewares.Auth(api.Redis), api.CheckSession)
