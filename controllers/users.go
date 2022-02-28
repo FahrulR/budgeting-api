@@ -100,11 +100,23 @@ func (api *API) UpdateUser(c *gin.Context) {
 		return
 	}
 
+	var exists bool
+	if err := api.Db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND id != $2 AND NOT deleted)", user.Email, userId).Scan(&exists); err != nil {
+		log.Println(err)
+		sendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if exists {
+		sendError(c, http.StatusConflict, "email-already-exist")
+		return
+	}
+
 	q := "UPDATE users SET name = $1, email = $2"
 	stms := []interface{}{user.Name, user.Email}
 
 	if updatePassword {
-		q += " password = crypt($3, gen_salt('bf', 8))"
+		q += ", password = crypt($3, gen_salt('bf', 8))"
 		stms = append(stms, user.Password)
 	}
 
