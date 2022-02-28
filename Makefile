@@ -25,7 +25,7 @@ migrate:
 
 test:
 	GIN_MODE=release go test ./... -cover -v -covermode count -coverprofile coverage.out 2>&1
-	# GIN_MODE=release go test ./... -v -run '$UpdateUserReset' -covermode count -coverprofile coverage.out 2>&1
+	# GIN_MODE=release go test ./... -v -run '$UpdateUser' -covermode count -coverprofile coverage.out 2>&1
 	go tool cover -func=coverage.out
 
 exec_db:
